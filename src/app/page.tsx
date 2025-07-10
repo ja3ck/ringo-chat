@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useChatStore } from '@/lib/store'
 import Header from '@/components/layout/Header'
@@ -14,6 +14,7 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isTyping, setIsTyping] = useState(false)
   const [processingMessage, setProcessingMessage] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
   
   const { 
     conversations, 
@@ -27,6 +28,14 @@ export default function Home() {
   } = useChatStore()
 
   const currentConversation = conversations.find(c => c.id === currentConversationId)
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [currentConversation?.messages, isTyping])
 
   const handleSendMessage = async (content: string) => {
     console.log('=== handleSendMessage called ===', content)
@@ -227,6 +236,7 @@ export default function Home() {
                 />
               ))}
               {isTyping && <TypingIndicator />}
+              <div ref={messagesEndRef} />
             </div>
           ) : (
             <div className="flex-1 flex items-center justify-center">
