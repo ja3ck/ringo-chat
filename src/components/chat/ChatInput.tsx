@@ -32,11 +32,19 @@ export default function ChatInput({
     }
   }
 
-  // Auto-resize textarea
+  // Auto-resize textarea and manage scroll
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
-      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px'
+      const scrollHeight = textareaRef.current.scrollHeight
+      textareaRef.current.style.height = scrollHeight + 'px'
+      
+      // Only show scroll bar when content exceeds maxHeight
+      if (scrollHeight > 120) {
+        textareaRef.current.style.overflowY = 'auto'
+      } else {
+        textareaRef.current.style.overflowY = 'hidden'
+      }
     }
   }, [message])
 
@@ -62,7 +70,7 @@ export default function ChatInput({
             placeholder={placeholder}
             rows={1}
             className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            style={{ maxHeight: '120px' }}
+            style={{ maxHeight: '120px', overflowY: 'hidden' }}
             disabled={isLoading}
           />
           
