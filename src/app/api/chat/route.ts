@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     }
 
     const result = await streamText({
-      model: openai('gpt-3.5-turbo'),
+      model: openai('gpt-4o'),
       messages: messages.map((msg: { role: 'user' | 'assistant' | 'system'; content: string }) => ({
         role: msg.role,
         content: msg.content

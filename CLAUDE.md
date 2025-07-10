@@ -136,7 +136,7 @@ OPENAI_API_KEY=your-openai-api-key-here
 ### Features
 - **Conversation Context**: Full conversation history is sent to OpenAI for context
 - **Error Handling**: Graceful error handling with user-friendly messages
-- **GPT-3.5-turbo**: Currently configured to use GPT-3.5-turbo model
+- **GPT-4o**: Currently configured to use GPT-4o model
 - **Streaming Support**: Real-time response streaming available via `/api/chat/stream`
 
 ## Next Steps for Implementation
@@ -146,4 +146,4 @@ OPENAI_API_KEY=your-openai-api-key-here
 3. **File Upload**: Implement file upload and processing
 4. **Authentication**: Complete provider setup and remove guest access
 5. **Database**: Add conversation persistence to database
-6. **Streaming UI**: Implement streaming response in the frontend
+6. ✅ **Streaming UI**: Implement streaming response in the frontend
