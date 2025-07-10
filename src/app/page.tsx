@@ -191,10 +191,10 @@ export default function Home() {
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
                 <h2 className="text-2xl font-bold text-gray-900 mb-4">
-                  Welcome to Ringo Chat
+                  Ringo Chat에 오신 것을 환영합니다
                 </h2>
                 <p className="text-gray-600 mb-6">
-                  Start a conversation with AI by typing a message below
+                  아래에 메시지를 입력하여 AI와 대화를 시작하세요
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-lg mx-auto">
                   <button
