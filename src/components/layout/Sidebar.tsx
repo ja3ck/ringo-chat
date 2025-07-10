@@ -13,10 +13,12 @@ import { format } from 'date-fns'
 interface SidebarProps {
   isOpen: boolean
   onClose: () => void
+  onNewChat: () => void
+  onSelectConversation: (conversationId: string) => void
 }
 
-export default function Sidebar({ isOpen, onClose }: SidebarProps) {
-  const { conversations, currentConversationId, setCurrentConversation } = useChatStore()
+export default function Sidebar({ isOpen, onClose, onNewChat, onSelectConversation }: SidebarProps) {
+  const { conversations, currentConversationId } = useChatStore()
   const [searchTerm, setSearchTerm] = useState('')
 
   const filteredConversations = conversations.filter(conv =>
@@ -26,13 +28,13 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     )
   )
 
-  const handleNewChat = () => {
-    setCurrentConversation(null)
+  const handleNewChatClick = () => {
+    onNewChat()
     onClose()
   }
 
-  const handleSelectConversation = (conversationId: string) => {
-    setCurrentConversation(conversationId)
+  const handleSelectConversationClick = (conversationId: string) => {
+    onSelectConversation(conversationId)
     onClose()
   }
 
@@ -67,7 +69,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             
             {/* New Chat Button */}
             <button
-              onClick={handleNewChat}
+              onClick={handleNewChatClick}
               className="w-full mt-3 flex items-center justify-center space-x-2 p-3 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
             >
               <PlusIcon className="h-5 w-5" />
@@ -96,7 +98,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                 {filteredConversations.map((conversation) => (
                   <button
                     key={conversation.id}
-                    onClick={() => handleSelectConversation(conversation.id)}
+                    onClick={() => handleSelectConversationClick(conversation.id)}
                     className={`w-full text-left p-3 rounded-lg mb-2 transition-colors ${
                       currentConversationId === conversation.id
                         ? 'bg-blue-600'

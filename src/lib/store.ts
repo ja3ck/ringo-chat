@@ -13,7 +13,7 @@ interface ChatStore extends ChatState {
   clearAllConversations: () => void
 }
 
-export const useChatStore = create<ChatStore>((set, get) => ({
+export const useChatStore = create<ChatStore>((set) => ({
   conversations: [],
   currentConversationId: null,
   isLoading: false,

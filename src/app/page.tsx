@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
+import { useChat } from 'ai/react'
 import { useChatStore } from '@/lib/store'
 import Header from '@/components/layout/Header'
 import Sidebar from '@/components/layout/Sidebar'
@@ -12,22 +13,27 @@ import TypingIndicator from '@/components/chat/TypingIndicator'
 export default function Home() {
   const { data: session } = useSession()
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [isTyping, setIsTyping] = useState(false)
-  const [processingMessage, setProcessingMessage] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   
   const { 
     conversations, 
     currentConversationId, 
-    addMessage,
     addConversation,
-    updateMessage,
-    removeMessage,
+    addMessage,
     isLoading,
     clearAllConversations
   } = useChatStore()
 
-  const currentConversation = conversations.find(c => c.id === currentConversationId)
+  const { messages, append, isLoading: isChatLoading, setMessages, error } = useChat({
+    api: '/api/chat',
+    onFinish: (message) => {
+      // Save AI response to store using current conversation ID
+      const currentId = useChatStore.getState().currentConversationId
+      if (currentId) {
+        addMessageToStoreWithId(currentId, 'assistant', message.content)
+      }
+    }
+  })
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -35,168 +41,111 @@ export default function Home() {
 
   useEffect(() => {
     scrollToBottom()
-  }, [currentConversation?.messages, isTyping])
+  }, [messages, isChatLoading])
 
+  // Add individual messages to store with specific conversation ID
+  const addMessageToStoreWithId = (conversationId: string, role: 'user' | 'assistant', content: string) => {
+    const message = {
+      id: `${role}-${Date.now()}-${Math.random()}`,
+      conversationId: conversationId,
+      role,
+      content,
+      createdAt: new Date()
+    }
+    
+    addMessage(message)
+  }
+
+
+  
   const handleSendMessage = async (content: string) => {
-    console.log('=== handleSendMessage called ===', content)
+    let conversationId = currentConversationId
     
-    if (processingMessage) {
-      console.log('Already processing a message, ignoring')
-      return
+    // Create new conversation if none exists
+    if (!conversationId) {
+      conversationId = Date.now().toString()
+      const newConversation = {
+        id: conversationId,
+        userId: userId,
+        title: content.substring(0, 50) + '...',
+        messages: [],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+      addConversation(newConversation)
+      
+      // Set the current conversation ID
+      const { setCurrentConversation } = useChatStore.getState()
+      setCurrentConversation(conversationId)
     }
-    
-    try {
-      setProcessingMessage(true)
-      setIsTyping(true)
-      
-      // Create new conversation if none exists
-      let conversationId = currentConversationId
-      let targetConversation = currentConversation
-      
-      console.log('Current conversation:', currentConversationId, !!currentConversation)
-      
-      if (!targetConversation) {
-        conversationId = Date.now().toString()
-        const newConversation = {
-          id: conversationId,
-          userId: userId,
-          title: content.substring(0, 50) + '...',
-          messages: [],
-          createdAt: new Date(),
-          updatedAt: new Date()
-        }
-        console.log('Creating new conversation:', conversationId)
-        addConversation(newConversation)
-        targetConversation = newConversation
-      }
 
-      // Add user message with unique ID
-      const userMessage = {
-        id: `user-${Date.now()}-${Math.random()}`,
-        conversationId: conversationId!,
-        role: 'user' as const,
-        content,
-        createdAt: new Date()
-      }
-      console.log('Adding user message:', userMessage.id)
-      addMessage(userMessage)
+    // Save user message to store first (using the conversationId directly)
+    addMessageToStoreWithId(conversationId, 'user', content)
 
-      // Get conversation history for context (use the target conversation we have)
-      const allMessages = [...targetConversation.messages, userMessage]
-      
-      // Call OpenAI API
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: allMessages.map(msg => ({
-            role: msg.role,
-            content: msg.content
-          }))
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to get response from AI')
-      }
-
-      const data = await response.json()
-      
-      // Add AI response with unique ID
-      const aiMessage = {
-        id: `assistant-${Date.now()}`,
-        conversationId: conversationId!,
-        role: 'assistant' as const,
-        content: data.message,
-        createdAt: new Date()
-      }
-      addMessage(aiMessage)
-      setIsTyping(false)
-      setProcessingMessage(false)
-    } catch (error) {
-      console.error('Error sending message:', error)
-      setIsTyping(false)
-      setProcessingMessage(false)
-      
-      // Add error message
-      const errorMessage = {
-        id: (Date.now() + 1).toString(),
-        conversationId: currentConversationId || Date.now().toString(),
-        role: 'assistant' as const,
-        content: 'Sorry, I encountered an error. Please make sure your OpenAI API key is configured correctly.',
-        createdAt: new Date()
-      }
-      addMessage(errorMessage)
-    }
+    // Use the useChat hook's append method to add a new user message
+    await append({
+      role: 'user',
+      content: content
+    })
   }
 
   // For now, allow guest access - in production you'd want proper auth
   const userId = session?.user?.id || 'guest'
 
   const handleRegenerateMessage = async (messageId: string) => {
-    if (!currentConversation || processingMessage) return
+    if (isChatLoading) return
 
-    try {
-      setProcessingMessage(true)
-      setIsTyping(true)
+    // Find the message and its position
+    const messageIndex = messages.findIndex(msg => msg.id === messageId)
+    if (messageIndex === -1) return
 
-      // Find the message and its position
-      const messageIndex = currentConversation.messages.findIndex(msg => msg.id === messageId)
-      if (messageIndex === -1) return
+    // Get all messages up to (but not including) the message to regenerate
+    const messagesUpToRegenerate = messages.slice(0, messageIndex)
+    
+    // Set messages to only include messages up to the point we want to regenerate
+    setMessages(messagesUpToRegenerate)
 
-      // Get all messages up to (but not including) the message to regenerate
-      const messagesUpToRegenerate = currentConversation.messages.slice(0, messageIndex)
-      
-      // Remove the message we're regenerating
-      removeMessage(messageId)
-
-      // Call OpenAI API with conversation history up to that point
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: messagesUpToRegenerate.map(msg => ({
-            role: msg.role,
-            content: msg.content
-          }))
-        }),
+    // Trigger regeneration by appending the last user message
+    const lastUserMessage = messagesUpToRegenerate.findLast(msg => msg.role === 'user')
+    if (lastUserMessage) {
+      await append({
+        role: 'user',
+        content: lastUserMessage.content
       })
+    }
+  }
 
-      if (!response.ok) {
-        throw new Error('Failed to regenerate response')
-      }
+  const handleNewChat = () => {
+    // Clear the current conversation in the store
+    const { setCurrentConversation } = useChatStore.getState()
+    setCurrentConversation(null)
+    
+    // Clear messages in useChat
+    setMessages([])
+  }
 
-      const data = await response.json()
-      
-      // Add new AI response
-      const newAiMessage = {
-        id: `assistant-${Date.now()}-${Math.random()}`,
-        conversationId: currentConversation.id,
-        role: 'assistant' as const,
-        content: data.message,
-        createdAt: new Date()
-      }
-      addMessage(newAiMessage)
-      setIsTyping(false)
-      setProcessingMessage(false)
-    } catch (error) {
-      console.error('Error regenerating message:', error)
-      setIsTyping(false)
-      setProcessingMessage(false)
-      
-      // Add error message
-      const errorMessage = {
-        id: `assistant-${Date.now()}-${Math.random()}`,
-        conversationId: currentConversation.id,
-        role: 'assistant' as const,
-        content: 'Sorry, I encountered an error while regenerating the response.',
-        createdAt: new Date()
-      }
-      addMessage(errorMessage)
+  const handleSelectConversation = (conversationId: string) => {
+    // Don't reload if it's already the current conversation
+    if (currentConversationId === conversationId) {
+      return
+    }
+    
+    // Set the current conversation in the store
+    const { setCurrentConversation } = useChatStore.getState()
+    setCurrentConversation(conversationId)
+    
+    // Find the conversation and load its messages
+    const conversation = conversations.find(c => c.id === conversationId)
+    
+    if (conversation && conversation.messages && conversation.messages.length > 0) {
+      const chatMessages = conversation.messages.map(msg => ({
+        id: msg.id,
+        role: msg.role,
+        content: msg.content
+      }))
+      setMessages(chatMessages)
+    } else {
+      setMessages([])
     }
   }
 
@@ -204,7 +153,9 @@ export default function Home() {
     <div className="h-screen bg-gray-50 flex">
       <Sidebar 
         isOpen={sidebarOpen} 
-        onClose={() => setSidebarOpen(false)} 
+        onClose={() => setSidebarOpen(false)}
+        onNewChat={handleNewChat}
+        onSelectConversation={handleSelectConversation}
       />
       
       <div className="flex-1 flex flex-col">
@@ -212,30 +163,28 @@ export default function Home() {
         
         {/* Chat Area */}
         <div className="flex-1 overflow-y-auto">
-          {currentConversation?.messages.length > 0 ? (
+          {messages.length > 0 ? (
             <div className="max-w-4xl mx-auto">
-              {currentConversation.messages
-                .filter((message, index, array) => {
-                  // Remove duplicates based on content and timestamp
-                  const isDuplicate = array.findIndex(m => 
-                    m.content === message.content && 
-                    m.role === message.role &&
-                    Math.abs(new Date(m.createdAt).getTime() - new Date(message.createdAt).getTime()) < 1000
-                  ) !== index
-                  if (isDuplicate) {
-                    console.log('Filtering out duplicate message:', message.id)
-                  }
-                  return !isDuplicate
-                })
-                .map((message, index) => (
+              {messages.map((message) => (
                 <ChatMessage
                   key={message.id}
-                  message={message}
+                  message={{
+                    id: message.id,
+                    conversationId: currentConversationId || '',
+                    role: message.role as 'user' | 'assistant',
+                    content: message.content,
+                    createdAt: new Date()
+                  }}
                   onRegenerate={() => handleRegenerateMessage(message.id)}
                   onCopy={() => {}}
                 />
               ))}
-              {isTyping && <TypingIndicator />}
+              {isChatLoading && <TypingIndicator />}
+              {error && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-md mx-4 my-2">
+                  <p className="text-red-800">Error: {error.message}</p>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
           ) : (
@@ -277,7 +226,7 @@ export default function Home() {
         
         <ChatInput 
           onSendMessage={handleSendMessage}
-          isLoading={isLoading || processingMessage}
+          isLoading={isLoading || isChatLoading}
           placeholder="Type your message..."
         />
       </div>

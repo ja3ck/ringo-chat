@@ -67,7 +67,7 @@ export default function ChatMessage({ message, onRegenerate, onCopy }: ChatMessa
                       </code>
                     ) : (
                       <SyntaxHighlighter
-                        style={tomorrow as any}
+                        style={tomorrow}
                         language={match[1]}
                         PreTag="div"
                         className="rounded-md"
