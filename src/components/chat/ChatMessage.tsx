@@ -6,7 +6,9 @@ import {
   UserCircleIcon, 
   ComputerDesktopIcon,
   ClipboardDocumentIcon,
-  ArrowPathIcon 
+  ArrowPathIcon,
+  DocumentIcon,
+  PhotoIcon
 } from '@heroicons/react/24/outline'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -23,8 +25,38 @@ export default function ChatMessage({ message, onRegenerate, onCopy }: ChatMessa
   const isUser = message.role === 'user'
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(message.content)
+    const textContent = typeof message.content === 'string' ? message.content : ''
+    navigator.clipboard.writeText(textContent)
     onCopy?.()
+  }
+
+  // Extract file attachments from message content
+  const extractFiles = (content: string | any) => {
+    // If content is not a string (e.g., multimodal array), just return the content as is
+    if (typeof content !== 'string') {
+      return { files: [], messageContent: '' }
+    }
+    
+    const attachmentMatch = content.match(/Attached files: (.+)/)
+    if (attachmentMatch) {
+      const filesString = attachmentMatch[1]
+      const files = filesString.match(/\[([^\]]+)\]/g)?.map(f => f.slice(1, -1)) || []
+      const messageWithoutFiles = content.replace(/\n\nAttached files: .+/, '')
+      return { files, messageContent: messageWithoutFiles }
+    }
+    return { files: [], messageContent: content }
+  }
+
+  const { files, messageContent } = extractFiles(message.content)
+
+  const getFileIcon = (filename: string) => {
+    const ext = filename.split('.').pop()?.toLowerCase()
+    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']
+    
+    if (ext && imageExtensions.includes(ext)) {
+      return <PhotoIcon className="h-5 w-5 text-gray-600" />
+    }
+    return <DocumentIcon className="h-5 w-5 text-gray-600" />
   }
 
   return (
@@ -52,7 +84,7 @@ export default function ChatMessage({ message, onRegenerate, onCopy }: ChatMessa
         {/* Message Text */}
         <div className="prose prose-sm max-w-none">
           {isUser ? (
-            <p className="text-gray-800 whitespace-pre-wrap">{message.content}</p>
+            <p className="text-gray-800 whitespace-pre-wrap">{messageContent || (typeof message.content === 'string' ? message.content : '')}</p>
           ) : (
             <div className="text-gray-800">
               <ReactMarkdown
@@ -78,11 +110,23 @@ export default function ChatMessage({ message, onRegenerate, onCopy }: ChatMessa
                   }
                 }}
               >
-                {message.content}
+                {typeof message.content === 'string' ? message.content : ''}
               </ReactMarkdown>
             </div>
           )}
         </div>
+
+        {/* File Attachments */}
+        {files.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {files.map((filename, index) => (
+              <div key={index} className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg text-sm">
+                {getFileIcon(filename)}
+                <span className="text-gray-700">{filename}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Action Buttons */}
         {!isUser && (

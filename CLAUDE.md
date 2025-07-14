@@ -124,8 +124,8 @@ The auth system is configured to work with or without provider credentials:
 ## OpenAI Integration
 
 ### API Routes
-- **`/api/chat`**: Standard OpenAI completion endpoint
-- **`/api/chat/stream`**: Streaming OpenAI completion endpoint (for real-time responses)
+- **`/api/chat`**: Standard OpenAI completion endpoint with multimodal support
+- **`/api/upload`**: File upload endpoint for images and documents
 
 ### Configuration
 The OpenAI API key should be set in your `.env` file:
@@ -136,14 +136,16 @@ OPENAI_API_KEY=your-openai-api-key-here
 ### Features
 - **Conversation Context**: Full conversation history is sent to OpenAI for context
 - **Error Handling**: Graceful error handling with user-friendly messages
-- **GPT-4o**: Currently configured to use GPT-4o model
-- **Streaming Support**: Real-time response streaming available via `/api/chat/stream`
+- **GPT-4o**: Currently configured to use GPT-4o model with vision capabilities
+- **Streaming Support**: Real-time response streaming
+- **Image Understanding**: Supports image uploads and AI vision analysis
+- **File Attachments**: Supports various file types (images, PDFs, documents)
 
 ## Next Steps for Implementation
 
 1. ✅ **AI Integration**: OpenAI API integration completed
 2. **Real-time Features**: Add Socket.io for live streaming  
-3. **File Upload**: Implement file upload and processing
+3. ✅ **File Upload**: Implement file upload and processing
 4. **Authentication**: Complete provider setup and remove guest access
 5. **Database**: Add conversation persistence to database
 6. ✅ **Streaming UI**: Implement streaming response in the frontend

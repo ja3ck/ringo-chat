@@ -58,7 +58,7 @@ export default function Home() {
 
 
   
-  const handleSendMessage = async (content: string) => {
+  const handleSendMessage = async (content: string, files?: Array<{filename: string, filepath: string, filetype: string, filesize: number}>) => {
     let conversationId = currentConversationId
     
     // Create new conversation if none exists
@@ -79,14 +79,81 @@ export default function Home() {
       setCurrentConversation(conversationId)
     }
 
-    // Save user message to store first (using the conversationId directly)
-    addMessageToStoreWithId(conversationId, 'user', content)
+    // Check if there are image files
+    const imageFiles = files?.filter(f => f.filetype.startsWith('image/')) || []
+    
+    if (imageFiles.length > 0) {
+      // Create multimodal content for images
+      const messageContent: any[] = []
+      
+      // Add text content if present
+      if (content.trim()) {
+        messageContent.push({
+          type: 'text',
+          text: content
+        })
+      }
+      
+      // Add images
+      for (const imageFile of imageFiles) {
+        try {
+          // Fetch the image and convert to base64
+          const response = await fetch(imageFile.filepath)
+          const blob = await response.blob()
+          const base64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader()
+            reader.onloadend = () => {
+              const base64String = reader.result as string
+              resolve(base64String.split(',')[1]) // Remove data:image/...;base64, prefix
+            }
+            reader.readAsDataURL(blob)
+          })
+          
+          messageContent.push({
+            type: 'image',
+            image: `data:${imageFile.filetype};base64,${base64}`
+          })
+        } catch (error) {
+          console.error('Error processing image:', error)
+        }
+      }
+      
+      // Add non-image files as text references
+      const nonImageFiles = files?.filter(f => !f.filetype.startsWith('image/')) || []
+      if (nonImageFiles.length > 0) {
+        const filesList = nonImageFiles.map(f => `[${f.filename}]`).join(', ')
+        messageContent.push({
+          type: 'text',
+          text: `Attached files: ${filesList}`
+        })
+      }
+      
+      // Save display message to store
+      const displayMessage = content + (files && files.length > 0 ? `\n\nAttached files: ${files.map(f => `[${f.filename}]`).join(', ')}` : '')
+      addMessageToStoreWithId(conversationId, 'user', displayMessage)
+      
+      // Send multimodal message
+      await append({
+        role: 'user',
+        content: messageContent
+      })
+    } else {
+      // Regular text message with file references
+      let messageContent = content
+      if (files && files.length > 0) {
+        const filesList = files.map(f => `[${f.filename}]`).join(', ')
+        messageContent = content ? `${content}\n\nAttached files: ${filesList}` : `Attached files: ${filesList}`
+      }
 
-    // Use the useChat hook's append method to add a new user message
-    await append({
-      role: 'user',
-      content: content
-    })
+      // Save user message to store first
+      addMessageToStoreWithId(conversationId, 'user', messageContent)
+
+      // Send text message
+      await append({
+        role: 'user',
+        content: messageContent
+      })
+    }
   }
 
   // For now, allow guest access - in production you'd want proper auth
