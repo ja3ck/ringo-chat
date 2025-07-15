@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import Image from 'next/image'
 import { PaperAirplaneIcon, PaperClipIcon, XCircleIcon } from '@heroicons/react/24/outline'
 
 interface UploadedFile {
@@ -25,6 +26,7 @@ export default function ChatInput({
   const [message, setMessage] = useState('')
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
   const [isUploading, setIsUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -34,6 +36,7 @@ export default function ChatInput({
       onSendMessage(message.trim(), uploadedFiles)
       setMessage('')
       setUploadedFiles([])
+      setUploadError(null)
     }
   }
 
@@ -49,7 +52,14 @@ export default function ChatInput({
     if (!files || files.length === 0) return
 
     setIsUploading(true)
+    setUploadError(null)
+    
     const uploadPromises = Array.from(files).map(async (file) => {
+      // Validate file size (max 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        throw new Error(`File "${file.name}" is too large. Maximum size is 10MB.`)
+      }
+
       const formData = new FormData()
       formData.append('file', file)
 
@@ -60,21 +70,25 @@ export default function ChatInput({
         })
 
         if (!response.ok) {
-          throw new Error('Upload failed')
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Upload failed')
         }
 
         const data = await response.json()
         return data.file as UploadedFile
       } catch (error) {
         console.error('File upload error:', error)
-        return null
+        throw error
       }
     })
 
-    const uploadedFileResults = await Promise.all(uploadPromises)
-    const successfulUploads = uploadedFileResults.filter((file): file is UploadedFile => file !== null)
+    try {
+      const uploadedFileResults = await Promise.all(uploadPromises)
+      setUploadedFiles(prev => [...prev, ...uploadedFileResults])
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : 'Failed to upload files')
+    }
     
-    setUploadedFiles(prev => [...prev, ...successfulUploads])
     setIsUploading(false)
     
     // Reset file input
@@ -113,22 +127,76 @@ export default function ChatInput({
 
   return (
     <div className="bg-white border-t border-gray-200 p-4">
+      {/* Display upload error */}
+      {uploadError && (
+        <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-red-800">{uploadError}</p>
+            <button
+              type="button"
+              onClick={() => setUploadError(null)}
+              className="text-red-400 hover:text-red-600"
+            >
+              <XCircleIcon className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+      
+      {/* Display upload progress */}
+      {isUploading && (
+        <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center space-x-2">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+            <p className="text-sm text-blue-800">Uploading files...</p>
+          </div>
+        </div>
+      )}
+      
       {/* Display uploaded files */}
       {uploadedFiles.length > 0 && (
-        <div className="mb-3 flex flex-wrap gap-2">
-          {uploadedFiles.map((file) => (
-            <div key={file.filepath} className="inline-flex items-center bg-gray-100 rounded-lg px-3 py-2 text-sm">
-              <span className="text-gray-700">{file.filename}</span>
-              <span className="text-gray-500 ml-2">({formatFileSize(file.filesize)})</span>
-              <button
-                type="button"
-                onClick={() => removeFile(file.filepath)}
-                className="ml-2 text-gray-400 hover:text-red-600"
-              >
-                <XCircleIcon className="h-4 w-4" />
-              </button>
-            </div>
-          ))}
+        <div className="mb-3 flex flex-wrap gap-3">
+          {uploadedFiles.map((file) => {
+            const isImage = file.filetype.startsWith('image/')
+            return (
+              <div key={file.filepath} className="relative">
+                {isImage ? (
+                  <div className="relative group">
+                    <Image 
+                      src={file.filepath} 
+                      alt={file.filename}
+                      width={64}
+                      height={64}
+                      className="h-16 w-16 object-cover rounded-lg border border-gray-200"
+                    />
+                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 rounded-lg transition-all" />
+                    <button
+                      type="button"
+                      onClick={() => removeFile(file.filepath)}
+                      className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 transition-colors"
+                    >
+                      <XCircleIcon className="h-3 w-3" />
+                    </button>
+                    <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded-b-lg truncate">
+                      {file.filename}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="inline-flex items-center bg-gray-100 rounded-lg px-3 py-2 text-sm">
+                    <span className="text-gray-700">{file.filename}</span>
+                    <span className="text-gray-500 ml-2">({formatFileSize(file.filesize)})</span>
+                    <button
+                      type="button"
+                      onClick={() => removeFile(file.filepath)}
+                      className="ml-2 text-gray-400 hover:text-red-600"
+                    >
+                      <XCircleIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
       
@@ -147,10 +215,27 @@ export default function ChatInput({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          className="flex-shrink-0 p-2 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition-colors"
+          className={`flex-shrink-0 p-2 rounded-md transition-colors ${
+            isUploading 
+              ? 'text-blue-500 bg-blue-50' 
+              : uploadedFiles.length > 0
+              ? 'text-blue-600 bg-blue-50 hover:bg-blue-100'
+              : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+          }`}
           disabled={isLoading || isUploading}
+          title={
+            isUploading 
+              ? 'Uploading files...' 
+              : uploadedFiles.length > 0 
+              ? `${uploadedFiles.length} file(s) attached` 
+              : 'Attach files'
+          }
         >
-          <PaperClipIcon className="h-5 w-5" />
+          {isUploading ? (
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+          ) : (
+            <PaperClipIcon className="h-5 w-5" />
+          )}
         </button>
 
         {/* Message Input */}

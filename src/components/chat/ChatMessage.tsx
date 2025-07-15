@@ -2,6 +2,7 @@
 
 import { Message } from '@/types/chat'
 import { format } from 'date-fns'
+import Image from 'next/image'
 import { 
   UserCircleIcon, 
   ComputerDesktopIcon,
@@ -31,29 +32,48 @@ export default function ChatMessage({ message, onRegenerate, onCopy }: ChatMessa
   }
 
   // Extract file attachments from message content
-  const extractFiles = (content: string | any) => {
+  const extractFiles = (content: string | unknown) => {
     // If content is not a string (e.g., multimodal array), just return the content as is
     if (typeof content !== 'string') {
-      return { files: [], messageContent: '' }
+      return { files: [], messageContent: '', hasImages: false }
     }
     
     const attachmentMatch = content.match(/Attached files: (.+)/)
     if (attachmentMatch) {
       const filesString = attachmentMatch[1]
-      const files = filesString.match(/\[([^\]]+)\]/g)?.map(f => f.slice(1, -1)) || []
+      const fileMatches = filesString.match(/\[([^\]]+)\]/g) || []
+      const files = fileMatches.map(match => {
+        const fileData = match.slice(1, -1) // Remove brackets
+        const parts = fileData.split('|')
+        
+        // Handle both old format (just filename) and new format (filename|filepath|filetype)
+        if (parts.length >= 3) {
+          return {
+            filename: parts[0],
+            filepath: parts[1],
+            filetype: parts[2]
+          }
+        } else {
+          // Fallback for old format
+          return {
+            filename: parts[0],
+            filepath: '', // No path available
+            filetype: ''
+          }
+        }
+      })
+      
       const messageWithoutFiles = content.replace(/\n\nAttached files: .+/, '')
-      return { files, messageContent: messageWithoutFiles }
+      const hasImages = files.some(file => file.filetype.startsWith('image/'))
+      return { files, messageContent: messageWithoutFiles, hasImages }
     }
-    return { files: [], messageContent: content }
+    return { files: [], messageContent: content, hasImages: false }
   }
 
   const { files, messageContent } = extractFiles(message.content)
 
-  const getFileIcon = (filename: string) => {
-    const ext = filename.split('.').pop()?.toLowerCase()
-    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']
-    
-    if (ext && imageExtensions.includes(ext)) {
+  const getFileIcon = (filetype: string) => {
+    if (filetype.startsWith('image/')) {
       return <PhotoIcon className="h-5 w-5 text-gray-600" />
     }
     return <DocumentIcon className="h-5 w-5 text-gray-600" />
@@ -118,13 +138,39 @@ export default function ChatMessage({ message, onRegenerate, onCopy }: ChatMessa
 
         {/* File Attachments */}
         {files.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {files.map((filename, index) => (
-              <div key={index} className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg text-sm">
-                {getFileIcon(filename)}
-                <span className="text-gray-700">{filename}</span>
+          <div className="mt-3">
+            {/* Images */}
+            {files.filter(file => file.filetype.startsWith('image/')).map((file, index) => (
+              <div key={`img-${index}`} className="mb-3">
+                <div className="relative max-w-sm">
+                  <Image 
+                    src={file.filepath} 
+                    alt={file.filename}
+                    width={400}
+                    height={256}
+                    className="max-w-sm max-h-64 object-contain rounded-lg border border-gray-200 cursor-pointer hover:shadow-lg transition-shadow"
+                    onClick={() => window.open(file.filepath, '_blank')}
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement
+                      target.style.display = 'none'
+                    }}
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-1">{file.filename}</p>
               </div>
             ))}
+            
+            {/* Non-image files */}
+            {files.filter(file => !file.filetype.startsWith('image/')).length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {files.filter(file => !file.filetype.startsWith('image/')).map((file, index) => (
+                  <div key={`file-${index}`} className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg text-sm">
+                    {getFileIcon(file.filetype)}
+                    <span className="text-gray-700">{file.filename}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

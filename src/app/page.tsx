@@ -41,7 +41,7 @@ export default function Home() {
 
   useEffect(() => {
     scrollToBottom()
-  }, [messages, isChatLoading])
+  }, [messages, isChatLoading, conversations, currentConversationId])
 
   // Add individual messages to store with specific conversation ID
   const addMessageToStoreWithId = (conversationId: string, role: 'user' | 'assistant', content: string) => {
@@ -84,7 +84,7 @@ export default function Home() {
     
     if (imageFiles.length > 0) {
       // Create multimodal content for images
-      const messageContent: any[] = []
+      const messageContent: Array<{type: string; text?: string; image?: string}> = []
       
       // Add text content if present
       if (content.trim()) {
@@ -104,7 +104,8 @@ export default function Home() {
             const reader = new FileReader()
             reader.onloadend = () => {
               const base64String = reader.result as string
-              resolve(base64String.split(',')[1]) // Remove data:image/...;base64, prefix
+              const commaIndex = base64String.indexOf(',')
+              resolve(commaIndex !== -1 ? base64String.substring(commaIndex + 1) : base64String)
             }
             reader.readAsDataURL(blob)
           })
@@ -128,8 +129,8 @@ export default function Home() {
         })
       }
       
-      // Save display message to store
-      const displayMessage = content + (files && files.length > 0 ? `\n\nAttached files: ${files.map(f => `[${f.filename}]`).join(', ')}` : '')
+      // Save display message to store with file metadata
+      const displayMessage = content + (files && files.length > 0 ? `\n\nAttached files: ${files.map(f => `[${f.filename}|${f.filepath}|${f.filetype}]`).join(', ')}` : '')
       addMessageToStoreWithId(conversationId, 'user', displayMessage)
       
       // Send multimodal message
@@ -141,7 +142,7 @@ export default function Home() {
       // Regular text message with file references
       let messageContent = content
       if (files && files.length > 0) {
-        const filesList = files.map(f => `[${f.filename}]`).join(', ')
+        const filesList = files.map(f => `[${f.filename}|${f.filepath}|${f.filetype}]`).join(', ')
         messageContent = content ? `${content}\n\nAttached files: ${filesList}` : `Attached files: ${filesList}`
       }
 
@@ -191,6 +192,29 @@ export default function Home() {
     setMessages([])
   }
 
+  // Get messages for display - combines store messages with live chat messages
+  const getDisplayMessages = () => {
+    if (!currentConversationId) {
+      return messages // Show live chat messages when no conversation selected
+    }
+    
+    // Find current conversation in store
+    const conversation = conversations.find(c => c.id === currentConversationId)
+    if (conversation && conversation.messages && conversation.messages.length > 0) {
+      // Use store messages (which include file attachments and proper text formatting)
+      // During streaming, combine store messages with the latest streaming message
+      if (isChatLoading && messages.length > conversation.messages.length) {
+        const storeMessages = conversation.messages
+        const latestStreamingMessage = messages[messages.length - 1]
+        return [...storeMessages, latestStreamingMessage]
+      }
+      return conversation.messages
+    }
+    
+    // Fallback to live chat messages
+    return messages
+  }
+
   const handleSelectConversation = (conversationId: string) => {
     // Don't reload if it's already the current conversation
     if (currentConversationId === conversationId) {
@@ -230,34 +254,36 @@ export default function Home() {
         
         {/* Chat Area */}
         <div className="flex-1 overflow-y-auto">
-          {messages.length > 0 ? (
-            <div className="max-w-4xl mx-auto">
-              {messages.map((message) => (
-                <ChatMessage
-                  key={message.id}
-                  message={{
-                    id: message.id,
-                    conversationId: currentConversationId || '',
-                    role: message.role as 'user' | 'assistant',
-                    content: message.content,
-                    createdAt: new Date()
-                  }}
-                  onRegenerate={() => handleRegenerateMessage(message.id)}
-                  onCopy={() => {}}
-                />
-              ))}
-              {isChatLoading && <TypingIndicator />}
-              {error && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-md mx-4 my-2">
-                  <p className="text-red-800">Error: {error.message}</p>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-          ) : (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center">
-                <h2 className="text-2xl font-bold text-gray-900 mb-4">
+          {(() => {
+            const displayMessages = getDisplayMessages()
+            return displayMessages.length > 0 ? (
+              <div className="max-w-4xl mx-auto">
+                {displayMessages.map((message) => (
+                  <ChatMessage
+                    key={message.id}
+                    message={{
+                      id: message.id,
+                      conversationId: currentConversationId || '',
+                      role: message.role as 'user' | 'assistant',
+                      content: message.content,
+                      createdAt: message.createdAt || new Date()
+                    }}
+                    onRegenerate={() => handleRegenerateMessage(message.id)}
+                    onCopy={() => {}}
+                  />
+                ))}
+                {isChatLoading && <TypingIndicator />}
+                {error && (
+                  <div className="p-4 bg-red-50 border border-red-200 rounded-md mx-4 my-2">
+                    <p className="text-red-800">Error: {error.message}</p>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+            ) : (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center">
+                  <h2 className="text-2xl font-bold text-gray-900 mb-4">
                   Ringo Chat에 오신 것을 환영합니다
                 </h2>
                 <p className="text-gray-600 mb-6">
@@ -288,7 +314,8 @@ export default function Home() {
                 </div>
               </div>
             </div>
-          )}
+            )
+          })()}
         </div>
         
         <ChatInput 
